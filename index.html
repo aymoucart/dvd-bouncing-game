@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bouncing DVD</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: black;
+      overflow: hidden;
+      height: 100%;
+      font-family: 'Arial', sans-serif;
+      position: relative;
+    }
+
+    #dvd {
+      position: absolute;
+      width: 120px;
+      height: 60px;
+      background-color: white;
+      color: black;
+      font-weight: bold;
+      font-size: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-radius: 8px;
+      user-select: none;
+      transition: transform 0.1s ease;
+      z-index: 2;
+    }
+
+    #leaderstats {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 28px;
+      backdrop-filter: blur(3px);
+      z-index: 2;
+    }
+
+    #clickToStart {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 24px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 20px 30px;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      z-index: 3;
+    }
+
+    /* Congratulation and Explosion overlays */
+    #congratsOverlay, #explosionOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-size: 36px;
+      font-weight: bold;
+      user-select: none;
+      z-index: 10;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #congratsOverlay.show, #explosionOverlay.show {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    #continueBtn, #restartBtn {
+      margin-top: 30px;
+      padding: 12px 30px;
+      font-size: 24px;
+      background-color: #1e90ff;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s ease;
+    }
+    #continueBtn:hover, #restartBtn:hover {
+      background-color: #63a8ff;
+    }
+
+    /* Sparkle effect */
+    .sparkle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: white;
+      border-radius: 50%;
+      filter: drop-shadow(0 0 6px white);
+      animation: sparkleAnim 1.2s infinite ease-in-out;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @keyframes sparkleAnim {
+      0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); }
+      50% { opacity: 1; transform: scale(1.3) rotate(45deg); }
+    }
+
+    /* Coming soon text */
+    #comingSoon {
+      font-size: 18px;
+      color: #aaa;
+      margin-top: 15px;
+      opacity: 0.7;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="leaderstats">Points: <span id="points">0</span></div>
+  <div id="dvd">DVD</div>
+  <div id="clickToStart">Click to Start</div>
+
+  <!-- Congrats overlay -->
+  <div id="congratsOverlay">
+    🎉 Congratulations! 🎉
+    <button id="continueBtn">Continue</button>
+  </div>
+
+  <!-- Explosion overlay -->
+  <div id="explosionOverlay">
+    💥 BOOM! 💥
+    <button id="restartBtn">Restart</button>
+    <div id="comingSoon">Coming Soon Up</div>
+  </div>
+
+  <script>
+    const dvd = document.getElementById('dvd');
+    const clickToStart = document.getElementById('clickToStart');
+    const pointsDisplay = document.getElementById('points');
+    const congratsOverlay = document.getElementById('congratsOverlay');
+    const continueBtn = document.getElementById('continueBtn');
+    const explosionOverlay = document.getElementById('explosionOverlay');
+    const restartBtn = document.getElementById('restartBtn');
+    const comingSoon = document.getElementById('comingSoon');
+
+    const colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'orange', 'lime', 'deeppink', 'aqua'];
+
+    let x = 100;
+    let y = 100;
+    let dx = 3;
+    let dy = 3;
+    const width = 120;
+    const height = 60;
+    let points = 0;
+    let animationRunning = false;
+    let audioCtx;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    // Louder 8-bit beep sound
+    function playBeep() {
+      if (!audioCtx) return;
+      const duration = 0.1;
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+
+      gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + duration);
+    }
+
+    // Big 8-bit boom sound (explosion)
+    function playBoom() {
+      if (!audioCtx) return;
+      const duration = 0.4;
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'square';
+
+      // Start high freq and sweep down for explosion effect
+      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + duration);
+
+      gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + duration);
+    }
+
+    function changeColor() {
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      dvd.style.backgroundColor = color;
+      dvd.style.color = 'white';
+    }
+
+    function bounceEffect() {
+      dvd.style.transform = 'scale(1.2)';
+      setTimeout(() => {
+        dvd.style.transform = 'scale(1)';
+      }, 100);
+    }
+
+    function addPoint() {
+      points++;
+      pointsDisplay.textContent = points;
+      if(points === 50) {
+        animationRunning = false;
+        showCongrats();
+      } else if (points === 100) {
+        animationRunning = false;
+        showExplosion();
+      }
+    }
+
+    function showCongrats() {
+      congratsOverlay.classList.add('show');
+      createSparkles(30);
+    }
+
+    function hideCongrats() {
+      congratsOverlay.classList.remove('show');
+      clearSparkles();
+      animationRunning = true;
+      animate();
+    }
+
+    function showExplosion() {
+      explosionOverlay.classList.add('show');
+      dvd.style.visibility = 'hidden'; // hide dvd on explosion
+      playBoom();
+      createSparkles(50);
+    }
+
+    function hideExplosion() {
+      explosionOverlay.classList.remove('show');
+      dvd.style.visibility = 'visible';
+      clearSparkles();
+    }
+
+    // Sparkle management
+    let sparkleElements = [];
+
+    function createSparkles(num) {
+      clearSparkles();
+      const parent = congratsOverlay.classList.contains('show') ? congratsOverlay : explosionOverlay;
+      for(let i = 0; i < num; i++) {
+        const sparkle = document.createElement('div');
+        sparkle.classList.add('sparkle');
+        sparkle.style.top = (Math.random() * 80 + 10) + '%';
+        sparkle.style.left = (Math.random() * 80 + 10) + '%';
+        sparkle.style.animationDelay = (Math.random() * 1.2) + 's';
+        parent.appendChild(sparkle);
+        sparkleElements.push(sparkle);
+      }
+    }
+
+    function clearSparkles() {
+      sparkleElements.forEach(s => s.remove());
+      sparkleElements = [];
+    }
+
+    function animate() {
+      if (!animationRunning) return;
+
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+
+      x += dx;
+      y += dy;
+
+      let hitWall = false;
+
+      if (x + width >= screenWidth || x <= 0) {
+        dx *= -1;
+        hitWall = true;
+      }
+
+      if (y + height >= screenHeight || y <= 0) {
+        dy *= -1;
+        hitWall = true;
+      }
+
+      if (hitWall) {
+        changeColor();
+        playBeep();
+        addPoint();
+        bounceEffect();
+      }
+
+      dvd.style.left = x + 'px';
+      dvd.style.top = y + 'px';
+
+      requestAnimationFrame(animate);
+    }
+
+    clickToStart.addEventListener("click", () => {
+      initAudio();
+      clickToStart.style.display = 'none';
+      animationRunning = true;
+      animate();
+    });
+
+    continueBtn.addEventListener('click', () => {
+      hideCongrats();
+    });
+
+    restartBtn.addEventListener('click', () => {
+      hideExplosion();
+      points = 0;
+      pointsDisplay.textContent = points;
+      x = 100;
+      y = 100;
+      dx = 3;
+      dy = 3;
+      comingSoon.style.display = 'block';
+      animationRunning = true;
+      animate();
+    });
+
+  </script>
+</body>
+</html>
